@@ -1,0 +1,15 @@
+{
+  "name": "nv-brain",
+  "version": "1.0.0",
+  "description": "NVArena Claw — Crypto trading infrastructure. 85M+ data points, signal scoring, strategy assembly, portfolio optimization.",
+  "main": "claw.js",
+  "scripts": {
+    "start": "node claw.js help"
+  },
+  "dependencies": {
+    "ethers": "^6.0.0"
+  },
+  "keywords": ["crypto", "trading", "signals", "backtesting", "nvprotocol", "openclaw"],
+  "author": "nvprotocol",
+  "license": "MIT"
+}

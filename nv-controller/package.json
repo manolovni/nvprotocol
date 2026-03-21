@@ -1,0 +1,16 @@
+{
+  "name": "nv-controller",
+  "version": "1.0.0",
+  "description": "NVArena Controller — Position manager and trade router. Receives signals, enforces risk rules, routes to executors (paper, Hyperliquid).",
+  "main": "controller.js",
+  "scripts": {
+    "start": "node controller.js",
+    "status": "node controller.js --status"
+  },
+  "dependencies": {
+    "yaml": "^2.0.0"
+  },
+  "keywords": ["crypto", "trading", "controller", "positions", "risk", "nvprotocol", "openclaw"],
+  "author": "nvprotocol",
+  "license": "MIT"
+}
