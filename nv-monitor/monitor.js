@@ -136,13 +136,26 @@ function loadStrategies(files, folder) {
 
 // ============================================================================
 // EXPRESSION EVALUATOR
+//
+// Recursive descent parser matching server-side precedence (EnvyExpressionEngine.cs):
+//   OR → AND → Comparison → Atom
+//
+// Supports: AND, OR, <=, >=, <, >, ==, !=, parentheses, numeric literals, indicators
 // ============================================================================
 function tokenize(expr) {
   const tokens = [];
-  const re = /\s*(AND|OR|<=|>=|!=|==|<|>|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.?\d*)\s*/g;
+  const re = /\s*(AND\b|OR\b|<=|>=|!=|==|<|>|\(|\)|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.?\d*)\s*/g;
   let match;
   while ((match = re.exec(expr)) !== null) {
-    tokens.push(match[1]);
+    const t = match[1];
+    const ops = ['AND', 'OR', '(', ')', '<=', '>=', '!=', '==', '<', '>'];
+    if (ops.includes(t)) {
+      tokens.push(t);
+    } else if (!isNaN(t)) {
+      tokens.push(parseFloat(t));
+    } else {
+      tokens.push(t); // indicator code
+    }
   }
   return tokens;
 }
@@ -151,39 +164,72 @@ function evaluateExpression(expr, indicators) {
   if (!expr || expr.trim() === '') return false;
 
   const tokens = tokenize(expr);
-  let i = 0;
+  let pos = 0;
 
-  function parseComparison() {
-    if (i >= tokens.length) return false;
-    const left = tokens[i++];
-    if (i >= tokens.length) return false;
-    const op = tokens[i++];
-    if (i >= tokens.length) return false;
-    const right = parseFloat(tokens[i++]);
-    const value = indicators[left];
-    if (value === undefined || value === null) return false;
-
-    switch (op) {
-      case '<=': return value <= right;
-      case '>=': return value >= right;
-      case '<':  return value < right;
-      case '>':  return value > right;
-      case '==': return value === right;
-      case '!=': return value !== right;
-      default: return false;
+  // OR: lowest precedence — matches server ParseOr
+  function parseOr() {
+    let left = parseAnd();
+    while (pos < tokens.length && tokens[pos] === 'OR') {
+      pos++;
+      const right = parseAnd();
+      left = left || right;
     }
+    return left;
   }
 
-  let result = parseComparison();
-
-  while (i < tokens.length) {
-    const logic = tokens[i++];
-    const next = parseComparison();
-    if (logic === 'AND') result = result && next;
-    else if (logic === 'OR') result = result || next;
+  // AND: higher precedence than OR — matches server ParseAnd
+  function parseAnd() {
+    let left = parseComparison();
+    while (pos < tokens.length && tokens[pos] === 'AND') {
+      pos++;
+      const right = parseComparison();
+      left = left && right;
+    }
+    return left;
   }
 
-  return result;
+  // Comparison: indicator op number — matches server ParseComparison
+  function parseComparison() {
+    const left = parseAtom();
+    const compOps = ['<=', '>=', '!=', '==', '<', '>'];
+    if (pos < tokens.length && compOps.includes(tokens[pos])) {
+      const op = tokens[pos++];
+      const right = parseAtom();
+      switch (op) {
+        case '<=': return left <= right;
+        case '>=': return left >= right;
+        case '<':  return left < right;
+        case '>':  return left > right;
+        case '==': return left === right;
+        case '!=': return left !== right;
+      }
+    }
+    // bare atom in boolean context: nonzero = true
+    return left !== 0 && left !== false;
+  }
+
+  // Atom: parenthesized expr, number, or indicator lookup
+  function parseAtom() {
+    if (pos >= tokens.length) return 0;
+    const token = tokens[pos];
+
+    if (token === '(') {
+      pos++;
+      const val = parseOr();
+      if (pos < tokens.length && tokens[pos] === ')') pos++;
+      return val ? 1 : 0;
+    }
+
+    pos++;
+
+    if (typeof token === 'number') return token;
+
+    // Indicator lookup — missing indicator returns 0 (safe default)
+    const val = indicators[token];
+    return (val === undefined || val === null) ? 0 : val;
+  }
+
+  return parseOr();
 }
 
 // ============================================================================

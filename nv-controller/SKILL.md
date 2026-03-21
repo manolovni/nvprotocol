@@ -112,7 +112,7 @@ On startup, the controller compares its state with the executor:
 ## File Structure
 
 ```
-envy-controller/
+nv-controller/
   controller.js        Main script
   controller.yaml      Config (user-editable)
   state.json           Position state, P&L, history (auto-managed)
@@ -123,7 +123,7 @@ envy-controller/
 ## Executors
 
 ### Paper (default)
-Simulated trading. No real funds. Tracks virtual positions and P&L. Uses real prices from the claw skill's indicator data. Trade log written to `paper_trades.jsonl`.
+Simulated trading. No real funds. Tracks virtual positions and P&L. Uses real prices from the claw skill's indicator data. Balance persists across restarts via state.json. Trade log written to `paper_trades.jsonl`.
 
 ### Hyperliquid
 Live perpetual futures trading. Requires:

@@ -152,7 +152,7 @@ class StateManager {
     const now = Date.now();
     return this.state.positions.filter(p => {
       const holdMs = now - new Date(p.entryTime).getTime();
-      const limit = Math.min(p.maxHoldHours || 999, maxHoldHours) * 60 * 60 * 1000;
+      const limit = Math.min(p.maxHoldHours || maxHoldHours, maxHoldHours) * 60 * 60 * 1000;
       return holdMs >= limit;
     });
   }
@@ -181,18 +181,45 @@ class StateManager {
 // ============================================================================
 
 // ── Paper Executor ──
+// Balance is persisted in state.json under paperBalanceUsd so it survives restarts.
+// The StateManager owns the file — PaperExecutor reads/writes through it.
 class PaperExecutor {
-  constructor() {
-    this.balanceUsd = 10000;
+  constructor(state) {
+    this.state = state;
     this.positions = {};
     this.priceCache = {};
     this.logFile = path.join(__dirname, 'paper_trades.jsonl');
+
+    // Restore in-memory positions from state on restart
+    for (const pos of state.positions) {
+      this.positions[pos.coin] = {
+        direction: pos.direction,
+        size: pos.size,
+        sizeUsd: pos.sizeUsd,
+        entryPrice: pos.entryPrice,
+      };
+    }
   }
 
   get name() { return 'paper'; }
 
+  // Persist paper balance inside state so it survives process restarts
+  get balanceUsd() {
+    return this.state.state.paperBalanceUsd ?? 10000;
+  }
+
+  set balanceUsd(val) {
+    this.state.state.paperBalanceUsd = val;
+    this.state.save();
+  }
+
   async init() {
-    console.error('[executor:paper] Paper trading mode — no real funds at risk');
+    // Initialise balance on first ever run only
+    if (this.state.state.paperBalanceUsd === undefined) {
+      this.state.state.paperBalanceUsd = 10000;
+      this.state.save();
+    }
+    console.error(`[executor:paper] Paper trading mode — balance: $${this.balanceUsd.toFixed(2)}`);
   }
 
   async getBalance() {
@@ -354,11 +381,11 @@ function findSiblingSkill(filename) {
   return null;
 }
 
-function createExecutor(config) {
+function createExecutor(config, state) {
   const type = config.executor;
 
   if (type === 'paper') {
-    return new PaperExecutor();
+    return new PaperExecutor(state);
   }
 
   if (type === 'hyperliquid') {
@@ -381,7 +408,7 @@ function createExecutor(config) {
       return new HyperliquidExecutor(scriptPath, process.env.HYPERLIQUID_ADDRESS, process.env.HYPERLIQUID_PRIVATE_KEY);
     }
     console.error('[controller] No live executor found — falling back to paper mode');
-    return new PaperExecutor();
+    return new PaperExecutor(state);
   }
 
   throw new Error(`Unknown executor: ${type}. Must be: paper, hyperliquid, auto`);
@@ -740,11 +767,9 @@ class Controller {
     if (this.config.allocations && this.config.allocations[coin] !== undefined) {
       return this.config.allocations[coin];
     }
-    // Equal weight fallback: divide among all coins that have strategies
-    // We don't know total coins here, so use a safe default
-    const knownCoins = this.state.positions.map(p => p.coin);
-    if (!knownCoins.includes(coin)) knownCoins.push(coin);
-    return 100 / Math.max(knownCoins.length, this.config.risk.maxPositions);
+    // Equal weight fallback: divide by max_positions so all positions are
+    // sized consistently regardless of what's currently open.
+    return 100 / this.config.risk.maxPositions;
   }
 }
 
@@ -822,10 +847,10 @@ async function main() {
     process.exit(0);
   }
 
-  // Create executor
+  // Create executor — state passed so PaperExecutor can persist balance
   let executor;
   try {
-    executor = createExecutor(config);
+    executor = createExecutor(config, state);
   } catch (err) {
     console.error(`[controller] Executor error: ${err.message}`);
     process.exit(1);

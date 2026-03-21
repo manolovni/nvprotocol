@@ -1,6 +1,6 @@
 # NVProtocol Trading System
 
-Non-custodial AI trading agent for crypto perpetual futures. Analyzes 85M+ data points, scores signals with 365-day backtests, assembles optimal strategies, and trades automatically via OpenClaw.
+Non-custodial AI trading agent for crypto perpetual futures. Built on 86M+ data points, 85 orthogonal indicators across 7 dimensions, and a signal engine rooted in nonlinear dynamics and chaos theory.
 
 **Your keys. Your wallet. Your strategies. Open source.**
 
@@ -9,19 +9,76 @@ Non-custodial AI trading agent for crypto perpetual futures. Analyzes 85M+ data 
 ```
 You: "Set me up for trading"
 
-Agent: Building portfolio... BTC, MATIC, FET
+Agent: Building portfolio... BTC, ETH, SOL
        Opening signal packs... 30 signals scored
        Assembling strategies...
-       ✓ BTC: +94.7% return, 2.57 Sharpe
-       ✓ MATIC: +67.2%, 1.89 Sharpe  
-       ✓ FET: +112.4%, 3.01 Sharpe
+       ✓ BTC: +47.3% return, 1.82 Sharpe (168 trades, 365 days)
+       ✓ ETH: +31.5% return, 1.44 Sharpe (203 trades, 365 days)
+       ✓ SOL: +52.8% return, 1.67 Sharpe (189 trades, 365 days)
        Starting paper trader... watching 3 coins, 30 signals
 
 You: "How are my positions?"
 
-Agent: 2 open — BTC LONG +1.2%, FET SHORT -0.3%
+Agent: 2 open — BTC LONG +1.2%, ETH SHORT -0.3%
        Daily P&L: +$12.40
 ```
+
+## Signal Philosophy
+
+Most trading signals are entry detectors. A signal fires when a condition is met and the system trades.
+
+NVProtocol signals are different. Their primary responsibility is not to find entries. It is to stay silent.
+
+A signal here is a self-contained, regime-aware predicate. It knows not just what to look for, but when its own logic is valid. It fires only when multiple independent dimensions of market state simultaneously confirm that conditions are right. In all other states, it stays silent.
+
+This is why Sharpe ratios hold over 365 days across different market regimes. The edge is not in the entries — it is in the refusal to trade when the market is not in a state where the signal's assumptions hold. Once regime is correctly detected, entry optimization contributes roughly 0.1–0.8% on top. The regime is the work.
+
+## The Perception Layer
+
+Price is a chaotic stochastic process. It is sometimes predictable, sometimes genuinely random. Most trading systems assume it is always one or the other. This is the foundational error.
+
+NVProtocol measures predictability continuously using nonlinear dynamics:
+
+- **Hurst exponent** — long-range memory in price series: trending, mean-reverting, or random walk
+- **DFA (Detrended Fluctuation Analysis)** — fractal scaling behavior separated from noise
+- **Lyapunov exponents** — sensitivity to initial conditions, how chaotic the system is right now
+- **Strange attractor destabilization** — regime phase transition detection before it appears in price
+
+These are not indicators layered on top of technical analysis. They are the mathematical foundation for knowing when any indicator is trustworthy at all. Linear TA indicators are approximations of a nonlinear system — valid in some regimes, meaningless in others. The chaos layer tells the system which is which.
+
+The result is 13 mathematically derived market states — coordinates in Hurst × Lyapunov × DFA phase space. They do not have human names like "bull" or "bear." They are more precise than that.
+
+## Indicator Depth
+
+85 indicators across 7 independent dimensions, selected from 500+ candidates by filtering for genuine orthogonality in high-dimensional space:
+
+| Category | What it captures |
+|----------|-----------------|
+| **Chaos** | Hurst, DFA, Lyapunov, attractor dynamics, regime state |
+| **Technical** | Price structure, momentum, volatility |
+| **TechnicalRaw** | Unsmoothed price derivatives for microstructure |
+| **Price** | Cross-timeframe price relationships |
+| **Social** | Analyst, influencer, and crowd sentiment — tracked independently with convergence/divergence signals |
+| **CrossAsset** | Inter-market correlations including non-obvious relationships |
+| **Predictor** | Forward-looking composite signals |
+
+85 is not an arbitrary number. Correlated features were removed. What remains are independent views of market state across 40+ coins, updated every 15 minutes, over 427 days of history.
+
+5,524 signals have been scored against this feature matrix to date.
+
+## Engagement Levels
+
+The API supports four levels of engagement depending on what you want to build:
+
+**1. Raw Indicators** — access the live 85-dimension feature matrix directly. Snapshot or time series. Build your own signals, models, or visualizations on top of real data.
+
+**2. Signals** — score your own signal expressions against 365 days of history, or open signal packs (Common / Rare / Legendary) to receive pre-scored signals with backtest metrics, Sharpe, drawdown, and rarity tier.
+
+**3. Per-Coin Strategies** — submit a signal set and the strategy assembler runs a backtest tournament to find the optimal combination. Returns a priority-ordered strategy with full metrics.
+
+**4. Portfolio Balancing** — provide your existing holdings and the optimizer finds additions with minimum return correlation. Constructs a portfolio across 40+ coins designed to reduce regime concentration.
+
+Each level can be used independently or as a full pipeline.
 
 ## Architecture
 
@@ -103,7 +160,7 @@ allocations:
 ## Data Flow
 
 ```
-NVArena API (85M+ data points, 40+ coins, 46 indicators)
+NVArena API (86M+ data points, 40+ coins, 85 indicators, 427-day history, 5524 scored signals)
     ↓
 nv-brain: score signals, assemble strategies, save to strategies/
     ↓
@@ -114,19 +171,7 @@ nv-controller: risk checks → position sizing → execute trade
 Executor (paper / Hyperliquid / your own)
 ```
 
-## Key Features
-
-- **Non-custodial** — wallet created locally, keys never leave your machine
-- **Open source** — verify everything yourself
-- **Real data** — 85M+ indicator data points, not toy data
-- **Backtested** — every signal scored with 365-day backtest, Monte Carlo validation, overfit detection
-- **Auto-discovery** — skills find each other, API keys, strategies automatically
-- **Paper mode** — test with real data, no real money at risk
-- **Portable** — macOS, Linux, Windows (WSL2)
-
 ## Signal Events
-
-The monitor emits three event types:
 
 | Event | Meaning | Controller Action |
 |-------|---------|-------------------|
@@ -136,15 +181,15 @@ The monitor emits three event types:
 
 ## API
 
-The backend API at `arena.nvprotocol.com` provides:
+Full documentation: `GET https://arena.nvprotocol.com/api/claw/discover`
 
 - 40+ perpetual futures coins
-- 46 indicators (technical, social, chaos)
-- Signal packs with rarity tiers (Common/Rare/Trump)
-- 365-day backtesting with Monte Carlo validation
+- 85 indicators across 7 categories (Chaos, CrossAsset, Predictor, Price, Social, Technical, TechnicalRaw)
+- 5,524 scored signals with rarity tiers (Common / Rare / Legendary)
+- 365-day backtesting with Monte Carlo validation and overfit detection
 - Strategy assembly via backtest tournament
 - Portfolio optimization via return correlation
-- Real-time WebSocket indicator stream (15s updates)
+- Real-time WebSocket stream (15s updates, up to 10 coins per connection)
 - x402 micropayments + subscription system
 
 ## License

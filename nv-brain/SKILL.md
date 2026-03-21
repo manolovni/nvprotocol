@@ -99,7 +99,7 @@ cd {baseDir} && node claw.js history --coin ETH --indicators RSI_3H30M,MACD_6H30
 
 ### Signal Scoring (1 credit) — auto-saves to signals/
 
-Score a signal inline or from a YAML file. Returns rarity tier (Discarded/Common/Rare/Trump), Sharpe, return, win rate, drawdown, Monte Carlo stats, overfit score.
+Score a signal inline or from a YAML file. Returns rarity tier (Discarded/Common/Rare/Legendary), Sharpe, return, win rate, drawdown, Monte Carlo stats, overfit score.
 
 ```bash
 # Inline — quick signal check (auto-saves to signals/)
@@ -123,12 +123,12 @@ signals:
 
 ### Signal Packs (1/2/5 credits) — auto-saves to signals/
 
-Draw 10 random signals. Common=1cr, Rare=2cr, Trump=5cr.
+Draw 10 random signals. Common=1cr, Rare=2cr, Legendary=5cr.
 
 ```bash
 cd {baseDir} && node claw.js pack --coin BTC --type common
 cd {baseDir} && node claw.js pack --coin BTC --type rare
-cd {baseDir} && node claw.js pack --coin BTC --type trump
+cd {baseDir} && node claw.js pack --coin BTC --type legendary
 ```
 
 ### Backtesting (2 credits)

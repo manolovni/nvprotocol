@@ -507,9 +507,9 @@ const commands = {
   // ── Paid: Packs ──
 
   async 'pack'(args, opts) {
-    if (!opts.coin || !opts.type) { console.error('Usage: node claw.js pack --coin BTC --type common|rare|trump'); process.exit(1); }
+    if (!opts.coin || !opts.type) { console.error('Usage: node claw.js pack --coin BTC --type common|rare|legendary'); process.exit(1); }
     const packType = opts.type.toLowerCase();
-    if (!['common', 'rare', 'trump'].includes(packType)) { console.error('Pack type must be: common, rare, trump'); process.exit(1); }
+    if (!['common', 'rare', 'legendary'].includes(packType)) { console.error('Pack type must be: common, rare, legendary'); process.exit(1); }
     const result = await callPaid(`/api/claw/paid/signals/pack/${packType}?coin=${encodeURIComponent(opts.coin)}`);
 
     // Auto-save pack to signals/
@@ -625,7 +625,7 @@ PAID (subscription or x402):
   history --coin BTC [--hours 24] [--page 1]            Time series (0 credits)
   check-inline --coin BTC --name X --type LONG --expr "..." --exit "..." --hold 48   Score signal (1 credit)
   check --coin BTC --yaml signal.yaml                   Score signal from file (1 credit)
-  pack --coin BTC --type common|rare|trump              Open signal pack (1/2/5 credits)
+  pack --coin BTC --type common|rare|legendary          Open signal pack (1/2/5 credits)
   backtest --yaml strategy.yaml [--days 90]             Backtest strategy (2 credits)
   assemble --yaml signals.yaml [--mode normal] [--max 10]  Strategy assembly (3 credits)
   portfolio --existing BTC,SOL [--count 5] [--mode normal]  Portfolio optimize (free)
