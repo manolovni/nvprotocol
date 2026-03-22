@@ -347,7 +347,8 @@ class SignalMonitor {
       process.exit(1);
     }
     this.reconnectAttempts++;
-    const delay = RECONNECT_DELAY_MS * Math.min(this.reconnectAttempts, 12);
+    // Exponential backoff: 5s, 10s, 20s, 40s, 80s, 160s, 320s — capped at 320s
+    const delay = RECONNECT_DELAY_MS * Math.pow(2, Math.min(this.reconnectAttempts - 1, 6));
     this.log(`Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
     setTimeout(() => { if (this.running) this.connect(); }, delay);
   }
@@ -571,7 +572,7 @@ BEHAVIOR:
   - Emits only on state transitions (condition changes true/false)
   - No position tracking — the Controller decides what to do with signals
   - maxHoldHours included in ENTRY for the Controller to enforce
-  - Auto-reconnects on disconnect (up to 50 attempts with backoff)
+  - Auto-reconnects on disconnect (up to 50 attempts with exponential backoff)
   - Logs -> stderr, signals -> stdout (clean piping)
   - Ctrl+C for graceful shutdown with session stats
 `);

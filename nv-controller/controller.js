@@ -454,10 +454,11 @@ function findMonitor() {
 // CONTROLLER CORE
 // ============================================================================
 class Controller {
-  constructor(config, executor, state) {
+  constructor(config, executor, state, coinCount) {
     this.config = config;
     this.executor = executor;
     this.state = state;
+    this.coinCount = coinCount; // number of coins with strategies loaded
     this.running = false;
     this.monitorProc = null;
     this.holdCheckInterval = null;
@@ -767,9 +768,10 @@ class Controller {
     if (this.config.allocations && this.config.allocations[coin] !== undefined) {
       return this.config.allocations[coin];
     }
-    // Equal weight fallback: divide by max_positions so all positions are
-    // sized consistently regardless of what's currently open.
-    return 100 / this.config.risk.maxPositions;
+    // Equal weight fallback: divide by actual number of coins with strategies,
+    // not max_positions — so 1 coin with strategies gets 100% of tradeable capital,
+    // not 33% (which would leave capital idle with no way to deploy it).
+    return 100 / (this.coinCount || this.config.risk.maxPositions);
   }
 }
 
@@ -826,6 +828,25 @@ ARCHITECTURE:
 `);
 }
 
+// ============================================================================
+// STRATEGY COUNT DISCOVERY
+// Count unique coins from strategies/ so getAllocation uses the real number
+// ============================================================================
+function countStrategyCoins() {
+  const skillsDir = path.dirname(__dirname);
+  try {
+    const siblings = fs.readdirSync(skillsDir);
+    for (const name of siblings) {
+      const strategiesDir = path.join(skillsDir, name, 'strategies');
+      try {
+        const files = fs.readdirSync(strategiesDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+        if (files.length > 0) return files.length;
+      } catch {}
+    }
+  } catch {}
+  return 0;
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
@@ -856,8 +877,11 @@ async function main() {
     process.exit(1);
   }
 
+  // Discover how many coins have strategies — used for equal-weight fallback
+  const coinCount = countStrategyCoins();
+
   // Start controller
-  const controller = new Controller(config, executor, state);
+  const controller = new Controller(config, executor, state, coinCount);
   await controller.start();
 }
 
