@@ -598,7 +598,7 @@ const commands = {
 
   async 'help'() {
     console.log(`
-NVArena Claw CLI v3.0
+NVProtocol Trading System v1.0
 
 SETUP:
   balance                          Check wallet address, USDC balance, API key status
@@ -634,6 +634,11 @@ DATA MANAGEMENT:
   list-signals                     List saved signals in signals/
   list-strategies                  List saved strategies in strategies/
   list-archive                     List archived strategies in archive/
+
+MONITORING & TRADING:
+  node monitor.js                  Start live signal monitor
+  node controller.js               Start trading pipeline (spawns monitor)
+  node controller.js --status      Show positions and P&L
 
 AUTO-SAVE:
   Signals from check, check-inline, pack → saved to signals/

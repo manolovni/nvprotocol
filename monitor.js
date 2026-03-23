@@ -14,35 +14,15 @@ const MAX_WS_COINS = 10;
 // ============================================================================
 // CONFIG / AUTH
 // ============================================================================
-function findClawConfig() {
-  if (process.env.NVARENA_CONFIG) return process.env.NVARENA_CONFIG;
-
-  const local = path.join(__dirname, 'config.json');
-  if (fs.existsSync(local)) return local;
-
-  const skillsDir = path.dirname(__dirname);
-  try {
-    const siblings = fs.readdirSync(skillsDir);
-    for (const name of siblings) {
-      const candidate = path.join(skillsDir, name, 'config.json');
-      try {
-        const cfg = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-        if (cfg.apiKey && cfg.apiKey.startsWith('nva_')) return candidate;
-      } catch {}
-    }
-  } catch {}
-
-  return null;
-}
-
 function getApiKey() {
   if (process.env.NVARENA_API_KEY) return process.env.NVARENA_API_KEY;
 
-  const configPath = findClawConfig();
-  if (configPath) {
+  // config.json is in the same directory (single-skill layout)
+  const configPath = path.join(__dirname, 'config.json');
+  if (fs.existsSync(configPath)) {
     try {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      return cfg.apiKey || null;
+      if (cfg.apiKey && cfg.apiKey.startsWith('nva_')) return cfg.apiKey;
     } catch {}
   }
 
@@ -83,17 +63,11 @@ function loadStrategy(filePath) {
 }
 
 function findStrategiesDir() {
-  // Check sibling skill folders for a strategies/ directory with .yaml files
-  const skillsDir = path.dirname(__dirname);
+  // strategies/ is in the same directory (single-skill layout)
+  const local = path.join(__dirname, 'strategies');
   try {
-    const siblings = fs.readdirSync(skillsDir);
-    for (const name of siblings) {
-      const candidate = path.join(skillsDir, name, 'strategies');
-      try {
-        const files = fs.readdirSync(candidate).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
-        if (files.length > 0) return candidate;
-      } catch {}
-    }
+    const files = fs.readdirSync(local).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+    if (files.length > 0) return local;
   } catch {}
   return null;
 }
@@ -115,7 +89,7 @@ function loadStrategies(files, folder) {
     for (const f of entries) strategies.push(loadStrategy(path.join(dir, f)));
   }
 
-  // Auto-discover from sibling skill folders if nothing specified
+  // Auto-discover from strategies/ in same directory
   if (strategies.length === 0) {
     const autoDir = findStrategiesDir();
     if (autoDir) {
@@ -513,13 +487,10 @@ function parseArgs(args) {
 
 function printUsage() {
   console.error(`
-NVArena Signal Monitor v3.0 — Multi-Strategy Stateless Signal Emitter
-
-Watches live indicator data for multiple coins/strategies via a single WebSocket
-and emits ENTRY/ENTRY_END/EXIT events on state transitions.
+NVProtocol Signal Monitor v3.0 — Multi-Strategy Stateless Signal Emitter
 
 USAGE:
-  node monitor.js                                        Auto-discover strategies from claw skill
+  node monitor.js                                        Auto-discover strategies
   node monitor.js --strategy <file> [--strategy <file2>] Load specific files
   node monitor.js --strategies <folder>                  Load all .yaml from folder
 
@@ -529,52 +500,6 @@ OPTIONS:
   --file <path>          Append signal events to file (JSON lines)
   --webhook <url>        POST signal events to webhook URL
   --quiet                Suppress log output (only emit signal JSON to stdout)
-
-EXAMPLES:
-  # Single strategy
-  node monitor.js --strategy btc_strategy.yaml
-
-  # Multiple strategies (one WebSocket, multi-coin)
-  node monitor.js --strategy btc.yaml --strategy eth.yaml --strategy sol.yaml
-
-  # Load all strategies from a folder
-  node monitor.js --strategies ./my_strategies/
-
-  # Multi-coin with file output + webhook
-  node monitor.js --strategies ./strats/ --file signals.jsonl --webhook https://my.server/signals
-
-  # Pipe to Controller (quiet mode)
-  node monitor.js --strategies ./strats/ --quiet | node ../controller/controller.js
-
-STRATEGY YAML FORMAT (output from 'node claw.js assemble'):
-  coin: BTC
-  signals:
-    - priority: 1
-      name: RSI_OVERSOLD_TREND
-      signal_type: LONG
-      expression: "RSI_3H30M <= 30 AND ADX_3H30M >= 25"
-      exit_expression: "RSI_3H30M >= 70"
-      max_hold_hours: 48
-
-SIGNAL OUTPUT:
-  {"event":"ENTRY","coin":"BTC","direction":"LONG","signal":"RSI_OVERSOLD_TREND","priority":1,"maxHoldHours":48,"timestamp":"...","indicators":{...}}
-  {"event":"ENTRY_END","coin":"BTC","direction":"LONG","signal":"RSI_OVERSOLD_TREND","priority":1,"timestamp":"...","indicators":{...}}
-  {"event":"EXIT","coin":"BTC","direction":"LONG","signal":"RSI_OVERSOLD_TREND","priority":1,"timestamp":"...","indicators":{...}}
-
-EVENTS:
-  - ENTRY     = entry expression just became true (signal is active)
-  - ENTRY_END = entry expression was true, just became false (signal lost)
-  - EXIT      = exit expression just became true (explicit exit condition met)
-
-BEHAVIOR:
-  - Single WebSocket connection for all coins (max 10 unique coins)
-  - Evaluates ALL signals for ALL strategies on every 15s snapshot
-  - Emits only on state transitions (condition changes true/false)
-  - No position tracking — the Controller decides what to do with signals
-  - maxHoldHours included in ENTRY for the Controller to enforce
-  - Auto-reconnects on disconnect (up to 50 attempts with exponential backoff)
-  - Logs -> stderr, signals -> stdout (clean piping)
-  - Ctrl+C for graceful shutdown with session stats
 `);
 }
 
@@ -612,7 +537,7 @@ async function main() {
 
   const quiet = opts.quiet || false;
   if (!quiet) {
-    console.error(`[monitor] NVArena Signal Monitor v3.0`);
+    console.error(`[monitor] NVProtocol Signal Monitor v3.0`);
     console.error(`[monitor] Strategies: ${strategies.length} | Coins: ${coins.join(', ')} | Signals: ${totalSignals}`);
     for (const strat of strategies) {
       console.error(`[monitor]   ${strat.coin} (${strat.file}):`);

@@ -6,6 +6,54 @@ Non-custodial AI trading agent for crypto perpetual futures. Built on 86M+ data 
 
 ---
 
+## Install
+
+Requires [OpenClaw](https://docs.openclaw.ai/install) and Node.js 22+.
+
+```bash
+npx clawhub@latest install nvprotocol
+```
+
+Restart OpenClaw. Done.
+
+### For live trading (optional)
+
+Install the Hyperliquid executor skill separately:
+
+```bash
+npx clawhub@latest install hyperliquid
+```
+
+---
+
+## Quick Start
+
+In OpenClaw chat:
+
+```
+"Set me up for trading"
+```
+
+The agent handles everything — subscription, portfolio, signals, strategies, and starts paper trading.
+
+### With a referral code (free 14-day trial + 50 credits):
+
+```
+"Redeem referral code XXXX and set me up for trading"
+```
+
+### Manual setup:
+
+```
+1. "Check my subscription status"
+2. "Open a common signal pack for BTC"
+3. "Assemble a BTC strategy in normal mode"
+4. "Start the monitor"
+5. "Check my positions"
+```
+
+---
+
 ## Why This Is Different
 
 A typical trading signal is an entry detector. It checks a condition and fires.
@@ -106,79 +154,21 @@ Each level can be used independently or as a full pipeline.
 
 ## Architecture
 
-### Signal Generation Pipeline
 ```
-Envy Hunter (LLM hypothesis generation)
+claw.js (API: indicators, signals, strategies, portfolio)
     ↓
-Expression validation + parallel backtest
+monitor.js (WebSocket, evaluates expressions every 15s, emits transitions)
     ↓
-SignalTuner (structural variants)
+controller.js (risk checks → position sizing → executor)
     ↓
-Monte Carlo filter
-    ↓
-Signal DB → rarity scoring → packs
-    ↓
-[separate] Overfit detector
-```
-
-### Execution Pipeline
-```
-nv-brain (API: indicators, signals, strategies, portfolio)
-    ↓
-nv-monitor (WebSocket, evaluates expressions every 15s, emits transitions)
-    ↓
-nv-controller (risk checks → position sizing → executor)
-    ↓
-Executor: paper | Hyperliquid | your own
-```
-
----
-
-## Install
-
-Requires [OpenClaw](https://docs.openclaw.ai/install) and Node.js 22+.
-
-```bash
-cd ~/.openclaw/workspace/skills
-git clone https://github.com/manolovni/nvprotocol
-cd nvprotocol && bash install.sh
-```
-
-Restart OpenClaw. Done.
-
----
-
-## Quick Start
-
-In OpenClaw chat:
-
-```
-"Set me up for trading"
-```
-
-The agent handles everything — subscription, portfolio, signals, strategies, and starts paper trading.
-
-### With a referral code (free 14-day trial + 50 credits):
-
-```
-"Redeem referral code XXXX and set me up for trading"
-```
-
-### Manual setup:
-
-```
-1. "Check my subscription status"
-2. "Open a common signal pack for BTC"
-3. "Assemble a BTC strategy in normal mode"
-4. "Start the monitor"
-5. "Check my positions"
+Executor: paper | Hyperliquid (separate skill) | your own
 ```
 
 ---
 
 ## Configuration
 
-### Risk Rules — `nv-controller/controller.yaml`
+### Risk Rules — `controller.yaml`
 
 ```yaml
 executor: paper              # paper | hyperliquid | auto
@@ -200,7 +190,7 @@ allocations:
 | Executor | What it does | Required |
 |----------|-------------|----------|
 | `paper` | Simulated trading, no real funds (default) | Nothing |
-| `hyperliquid` | Live perpetual futures trading | Hyperliquid skill + private key |
+| `hyperliquid` | Live perpetual futures trading | `npx clawhub@latest install hyperliquid` + private key |
 | `auto` | Try Hyperliquid, fall back to paper | Nothing |
 
 ---

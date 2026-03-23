@@ -1,0 +1,16 @@
+{
+  "name": "nvprotocol",
+  "version": "1.0.0",
+  "description": "NVProtocol Trading System — Non-custodial AI trading agent for crypto perpetual futures. 85M+ data points, signal scoring, strategy assembly, portfolio optimization, live monitoring, position management.",
+  "scripts": {
+    "start": "node claw.js help"
+  },
+  "dependencies": {
+    "ethers": "^6.0.0",
+    "ws": "^8.0.0",
+    "yaml": "^2.0.0"
+  },
+  "keywords": ["crypto", "trading", "signals", "backtesting", "monitor", "controller", "nvprotocol", "openclaw"],
+  "author": "nvprotocol",
+  "license": "MIT"
+}

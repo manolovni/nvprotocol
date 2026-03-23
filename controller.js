@@ -9,6 +9,7 @@ const yaml = require('yaml');
 // ============================================================================
 const CONFIG_FILE = path.join(__dirname, 'controller.yaml');
 const STATE_FILE = path.join(__dirname, 'state.json');
+const STRATEGIES_DIR = path.join(__dirname, 'strategies');
 
 // ============================================================================
 // CONFIG LOADER
@@ -16,7 +17,7 @@ const STATE_FILE = path.join(__dirname, 'state.json');
 function loadConfig() {
   if (!fs.existsSync(CONFIG_FILE)) {
     console.error(`[controller] No config found. Creating default: ${CONFIG_FILE}`);
-    const defaultConfig = `# NVArena Controller Config
+    const defaultConfig = `# NVProtocol Controller Config
 executor: paper                  # paper | hyperliquid | auto
 confirm: false                   # require human confirmation before trades?
 
@@ -181,8 +182,6 @@ class StateManager {
 // ============================================================================
 
 // ── Paper Executor ──
-// Balance is persisted in state.json under paperBalanceUsd so it survives restarts.
-// The StateManager owns the file — PaperExecutor reads/writes through it.
 class PaperExecutor {
   constructor(state) {
     this.state = state;
@@ -203,7 +202,6 @@ class PaperExecutor {
 
   get name() { return 'paper'; }
 
-  // Persist paper balance inside state so it survives process restarts
   get balanceUsd() {
     return this.state.state.paperBalanceUsd ?? 10000;
   }
@@ -214,7 +212,6 @@ class PaperExecutor {
   }
 
   async init() {
-    // Initialise balance on first ever run only
     if (this.state.state.paperBalanceUsd === undefined) {
       this.state.state.paperBalanceUsd = 10000;
       this.state.save();
@@ -240,10 +237,10 @@ class PaperExecutor {
   }
 
   async getPrice(coin) {
-    // Use claw snapshot for real prices
+    // Use claw snapshot for real prices — claw.js is in the same directory
     try {
-      const clawPath = findSiblingSkill('claw.js');
-      if (clawPath) {
+      const clawPath = path.join(__dirname, 'claw.js');
+      if (fs.existsSync(clawPath)) {
         const result = await execCommand('node', [clawPath, 'snapshot', '--coins', coin, '--indicators', 'CLOSE_PRICE_15M']);
         const data = JSON.parse(result);
         const priceInd = data?.snapshot?.[coin]?.find(i => i.indicatorCode === 'CLOSE_PRICE_15M');
@@ -253,7 +250,6 @@ class PaperExecutor {
         }
       }
     } catch {}
-    // Fallback: use cached or 0
     return this.priceCache[coin] || 0;
   }
 
@@ -282,7 +278,6 @@ class PaperExecutor {
     if (!pos) return { orderId: null, filled: 0, price: 0 };
     const price = await this.getPrice(coin);
     this.balanceUsd += pos.sizeUsd;
-    // Add P&L
     const pnlPct = pos.direction === 'LONG'
       ? (price - pos.entryPrice) / pos.entryPrice
       : (pos.entryPrice - price) / pos.entryPrice;
@@ -309,7 +304,6 @@ class HyperliquidExecutor {
   get name() { return 'hyperliquid'; }
 
   async init() {
-    // Verify connection by checking balance
     const bal = await this.getBalance();
     console.error(`[executor:hyperliquid] Connected. Equity: $${bal.equity}`);
   }
@@ -349,7 +343,6 @@ class HyperliquidExecutor {
   }
 
   async closePosition(coin) {
-    // Get current position to determine size
     const positions = await this.getPositions();
     const pos = (Array.isArray(positions) ? positions : []).find(p =>
       p.coin?.toUpperCase() === coin.toUpperCase());
@@ -366,14 +359,18 @@ class HyperliquidExecutor {
 // ============================================================================
 // EXECUTOR DISCOVERY
 // ============================================================================
-function findSiblingSkill(filename) {
+
+/**
+ * Find a script in sibling skill folders (for external skills like Hyperliquid).
+ * This is the ONLY discovery that scans siblings — everything internal uses __dirname.
+ */
+function findExternalSkillScript(filename) {
   const skillsDir = path.dirname(__dirname);
   try {
     const siblings = fs.readdirSync(skillsDir);
     for (const name of siblings) {
       const candidate = path.join(skillsDir, name, filename);
       if (fs.existsSync(candidate)) return candidate;
-      // Check scripts/ subdirectory
       const scriptsCandidate = path.join(skillsDir, name, 'scripts', filename);
       if (fs.existsSync(scriptsCandidate)) return scriptsCandidate;
     }
@@ -389,8 +386,8 @@ function createExecutor(config, state) {
   }
 
   if (type === 'hyperliquid') {
-    const scriptPath = findSiblingSkill('hyperliquid.mjs');
-    if (!scriptPath) throw new Error('Hyperliquid skill not found in sibling folders');
+    const scriptPath = findExternalSkillScript('hyperliquid.mjs');
+    if (!scriptPath) throw new Error('Hyperliquid skill not found in sibling folders. Install it: npx clawhub@latest install hyperliquid');
 
     const address = process.env.HYPERLIQUID_ADDRESS;
     const privateKey = process.env.HYPERLIQUID_PRIVATE_KEY;
@@ -401,8 +398,7 @@ function createExecutor(config, state) {
   }
 
   if (type === 'auto') {
-    // Try Hyperliquid first, fall back to paper
-    const scriptPath = findSiblingSkill('hyperliquid.mjs');
+    const scriptPath = findExternalSkillScript('hyperliquid.mjs');
     if (scriptPath && process.env.HYPERLIQUID_PRIVATE_KEY) {
       console.error('[controller] Auto-discovered Hyperliquid executor');
       return new HyperliquidExecutor(scriptPath, process.env.HYPERLIQUID_ADDRESS, process.env.HYPERLIQUID_PRIVATE_KEY);
@@ -436,21 +432,6 @@ function execCommand(cmd, args, envVars = {}) {
 }
 
 // ============================================================================
-// MONITOR DISCOVERY
-// ============================================================================
-function findMonitor() {
-  // Check sibling folders for monitor.js
-  const scriptPath = findSiblingSkill('monitor.js');
-  if (scriptPath) return scriptPath;
-
-  // Check own directory
-  const local = path.join(__dirname, 'monitor.js');
-  if (fs.existsSync(local)) return local;
-
-  return null;
-}
-
-// ============================================================================
 // CONTROLLER CORE
 // ============================================================================
 class Controller {
@@ -458,7 +439,7 @@ class Controller {
     this.config = config;
     this.executor = executor;
     this.state = state;
-    this.coinCount = coinCount; // number of coins with strategies loaded
+    this.coinCount = coinCount;
     this.running = false;
     this.monitorProc = null;
     this.holdCheckInterval = null;
@@ -470,15 +451,13 @@ class Controller {
 
   async start() {
     this.running = true;
-    this.log(`NVArena Controller v1.0`);
+    this.log(`NVProtocol Controller v1.0`);
     this.log(`Executor: ${this.executor.name}`);
     this.log(`Risk: reserve ${this.config.risk.reservePct}%, max ${this.config.risk.maxPositions} positions, max hold ${this.config.risk.maxHoldHours}h`);
     this.log(`Entry end action: ${this.config.risk.entryEndAction}`);
 
-    // Init executor
     await this.executor.init();
 
-    // Show balance
     try {
       const bal = await this.executor.getBalance();
       this.log(`Balance: $${bal.equity} (available: $${bal.available})`);
@@ -486,23 +465,18 @@ class Controller {
       this.log(`Warning: Could not fetch balance: ${err.message}`);
     }
 
-    // Check for orphan positions
     await this.syncPositions();
 
-    // Show current state
     if (this.state.openCount > 0) {
       this.log(`Resuming with ${this.state.openCount} open position(s):`);
       for (const p of this.state.positions)
         this.log(`  ${p.coin} ${p.direction} via ${p.signal} (${Math.round((Date.now() - new Date(p.entryTime).getTime()) / 60000)}m)`);
     }
 
-    // Start hold timer checker (every 60s)
     this.holdCheckInterval = setInterval(() => this.checkHoldTimers(), 60000);
 
-    // Start monitor
     this.startMonitor();
 
-    // Graceful shutdown
     process.on('SIGINT', () => this.stop('SIGINT'));
     process.on('SIGTERM', () => this.stop('SIGTERM'));
   }
@@ -517,7 +491,6 @@ class Controller {
       this.monitorProc = null;
     }
 
-    // Print summary
     const summary = this.state.summary();
     this.log(`Session summary:`);
     this.log(`  Open positions: ${summary.openPositions}`);
@@ -537,14 +510,12 @@ class Controller {
           .filter(Boolean)
       );
 
-      // Orphans on executor: positions we don't know about
       for (const coin of execCoins) {
         if (!this.state.hasPosition(coin)) {
           this.log(`ORPHAN detected on executor: ${coin} — not tracked by controller`);
         }
       }
 
-      // Stale in state: positions we track but executor doesn't have
       for (const pos of this.state.positions) {
         if (!execCoins.has(pos.coin)) {
           this.log(`STALE position in state: ${pos.coin} ${pos.direction} — not found on executor, cleaning up`);
@@ -557,9 +528,10 @@ class Controller {
   }
 
   startMonitor() {
-    const monitorPath = findMonitor();
-    if (!monitorPath) {
-      this.log('ERROR: Cannot find monitor.js in sibling skill folders');
+    // monitor.js is in the same directory
+    const monitorPath = path.join(__dirname, 'monitor.js');
+    if (!fs.existsSync(monitorPath)) {
+      this.log('ERROR: Cannot find monitor.js');
       process.exit(1);
     }
 
@@ -568,7 +540,6 @@ class Controller {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // Read signals from monitor stdout (JSON lines)
     const rl = readline.createInterface({ input: this.monitorProc.stdout });
     rl.on('line', (line) => {
       try {
@@ -580,7 +551,6 @@ class Controller {
       }
     });
 
-    // Forward all monitor stderr
     const monitorStderr = readline.createInterface({ input: this.monitorProc.stderr });
     monitorStderr.on('line', (line) => {
       console.error(`  [monitor] ${line}`);
@@ -614,21 +584,16 @@ class Controller {
   }
 
   async handleEntry(coin, direction, signal, priority, maxHoldHours, indicators) {
-    // ── Risk checks ──
-
-    // Already have a position in this coin?
     if (this.state.hasPosition(coin)) {
       this.log(`SKIP ENTRY ${direction} ${coin} via ${signal} — already have ${coin} position`);
       return;
     }
 
-    // Max positions reached?
     if (this.state.openCount >= this.config.risk.maxPositions) {
       this.log(`SKIP ENTRY ${direction} ${coin} via ${signal} — max positions (${this.config.risk.maxPositions}) reached`);
       return;
     }
 
-    // Daily loss limit hit?
     const bal = await this.executor.getBalance();
     const dailyLossLimit = bal.equity * (this.config.risk.maxDailyLossPct / 100);
     if (Math.abs(this.state.dailyPnl) >= dailyLossLimit && this.state.dailyPnl < 0) {
@@ -636,7 +601,6 @@ class Controller {
       return;
     }
 
-    // Calculate position size
     const tradeable = bal.available * (1 - this.config.risk.reservePct / 100);
     const allocation = this.getAllocation(coin);
     const sizeUsd = tradeable * (allocation / 100);
@@ -646,7 +610,6 @@ class Controller {
       return;
     }
 
-    // ── Execute ──
     this.log(`ENTRY ${direction} ${coin} via ${signal} — size: $${sizeUsd.toFixed(2)}`);
 
     try {
@@ -670,7 +633,6 @@ class Controller {
 
       this.log(`FILLED ${direction} ${coin} @ $${price} (size: ${result.filled}, order: ${result.orderId})`);
 
-      // Emit to stdout for downstream consumers
       console.log(JSON.stringify({
         event: 'POSITION_OPENED',
         coin, direction, signal, priority,
@@ -684,10 +646,7 @@ class Controller {
   }
 
   async handleExit(coin, direction, signal, indicators) {
-    if (!this.state.hasPosition(coin)) {
-      // Not in a position for this coin — ignore
-      return;
-    }
+    if (!this.state.hasPosition(coin)) return;
 
     const pos = this.state.getPosition(coin);
 
@@ -727,7 +686,6 @@ class Controller {
       this.log(`ENTRY_END ${coin} via ${signal} — entry lost, closing per config`);
       await this.handleExit(coin, direction, signal, indicators);
     } else {
-      // hold — just log it
       this.log(`ENTRY_END ${coin} via ${signal} — entry lost, holding per config`);
     }
   }
@@ -768,9 +726,6 @@ class Controller {
     if (this.config.allocations && this.config.allocations[coin] !== undefined) {
       return this.config.allocations[coin];
     }
-    // Equal weight fallback: divide by actual number of coins with strategies,
-    // not max_positions — so 1 coin with strategies gets 100% of tradeable capital,
-    // not 33% (which would leave capital idle with no way to deploy it).
     return 100 / (this.coinCount || this.config.risk.maxPositions);
   }
 }
@@ -793,10 +748,7 @@ function parseArgs(args) {
 
 function printUsage() {
   console.error(`
-NVArena Controller v1.0
-
-Receives signals from the monitor, manages positions, enforces risk rules,
-and routes trade commands to an executor (paper, Hyperliquid, etc.).
+NVProtocol Controller v1.0
 
 USAGE:
   node controller.js                    Start with controller.yaml config
@@ -807,42 +759,17 @@ CONFIG:
   Edit controller.yaml to set executor, risk rules, and allocations.
   Default config is created on first run.
 
-FILES:
-  controller.yaml    Config (executor, risk, allocations)
-  state.json         Position state, P&L, trade history (auto-managed)
-  paper_trades.jsonl  Paper trade log (paper mode only)
-
 EXECUTORS:
   paper              Simulated trading, no real funds (default)
-  hyperliquid        Live trading via Hyperliquid skill
+  hyperliquid        Live trading via Hyperliquid skill (install separately)
   auto               Try Hyperliquid, fall back to paper
-
-ENVIRONMENT (for live trading):
-  HYPERLIQUID_ADDRESS       Your Hyperliquid wallet address
-  HYPERLIQUID_PRIVATE_KEY   Your private key for signing trades
-
-ARCHITECTURE:
-  claw.js (strategies) → monitor.js (signals) → controller.js (this) → executor (trades)
-
-  The controller spawns the monitor automatically — just run controller.js.
 `);
 }
 
-// ============================================================================
-// STRATEGY COUNT DISCOVERY
-// Count unique coins from strategies/ so getAllocation uses the real number
-// ============================================================================
 function countStrategyCoins() {
-  const skillsDir = path.dirname(__dirname);
   try {
-    const siblings = fs.readdirSync(skillsDir);
-    for (const name of siblings) {
-      const strategiesDir = path.join(skillsDir, name, 'strategies');
-      try {
-        const files = fs.readdirSync(strategiesDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
-        if (files.length > 0) return files.length;
-      } catch {}
-    }
+    const files = fs.readdirSync(STRATEGIES_DIR).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+    return files.length;
   } catch {}
   return 0;
 }
@@ -855,20 +782,15 @@ async function main() {
     process.exit(0);
   }
 
-  // Load config
   const config = loadConfig();
-
-  // Load state
   const state = new StateManager();
 
-  // Status mode
   if (opts.status) {
     const summary = state.summary();
     console.log(JSON.stringify(summary, null, 2));
     process.exit(0);
   }
 
-  // Create executor — state passed so PaperExecutor can persist balance
   let executor;
   try {
     executor = createExecutor(config, state);
@@ -877,10 +799,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Discover how many coins have strategies — used for equal-weight fallback
   const coinCount = countStrategyCoins();
 
-  // Start controller
   const controller = new Controller(config, executor, state, coinCount);
   await controller.start();
 }
